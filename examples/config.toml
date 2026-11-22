@@ -8,3 +8,8 @@ publisher = "your-github-login"
 url = "http://127.0.0.1:8000"                  # the API on this machine
 link = "https://paperless.example.ts.net"       # optional: where the user opens a document
 #deadline_field = "Kündbar bis"
+#app_links = true                               # links open the Swift Paperless app through <link>/app/<number>
+
+#[server]
+#port = 8769                                    # the MCP endpoint
+#app_port = 8772                                # the page behind app links
