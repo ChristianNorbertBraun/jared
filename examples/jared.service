@@ -1,0 +1,20 @@
+[Unit]
+Description=Jared (read-only bridge from a chat agent to Paperless-ngx)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+Environment=PYTHONPATH=%h/current
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=%h
+ExecStart=/usr/bin/python3 -m jared serve
+Restart=on-failure
+RestartSec=10
+MemoryMax=256M
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
