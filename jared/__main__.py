@@ -1,6 +1,6 @@
 """Jared command line (run as the service user).
 
-  python3 -m jared serve                     run the MCP endpoint (jared.service)
+  python3 -m jared serve                     run the MCP endpoint (jared.service), with app_links also the app page
   python3 -m jared check                     ask Paperless once with the stored token: is everything reachable?
   python3 -m jared update [--check] [--yes] [--to vX.Y.Z] [--force]
                                              install the newest release published by you on GitHub
@@ -23,25 +23,35 @@ def _archive(paths: config.Paths):
     from .paperless import Client
 
     cfg = config.load_paperless(paths.config)
-    return Archive(Client(cfg.url, config.load_token(paths.paperless_token)), cfg.link, cfg.deadline_field)
+    return Archive(Client(cfg.url, config.load_token(paths.paperless_token)), cfg.link, cfg.deadline_field,
+                   app_links=cfg.app_links)
 
 
 def cmd_serve(_: argparse.Namespace) -> int:
+    from . import apppage
     from .bridge import Bridge, serve
 
     paths = config.Paths.default()
     tokens = paths.tokens()
     port = config.load_port(paths.config)
+    app_port = config.load_app_port(paths.config) if config.load_paperless(paths.config).app_links else None
     bridge = Bridge(_archive(paths), update=config.load_update(paths.config),
                     last_result=lambda: updater.last_result(paths.state))
-    server = serve(bridge, tokens, port)
+    servers = [serve(bridge, tokens, port)]
+    if app_port:
+        try:
+            servers.append(apppage.serve(app_port))
+        except OSError:  # fail as a whole: links would point to a page that is not there
+            raise config.ConfigError(f"[server] app_port {app_port} is not free") from None
     updater.mark_running(paths.state)
-    print(f"jared {__version__} on 127.0.0.1:{port} for {', '.join(sorted(tokens))}")
+    print(f"jared {__version__} on 127.0.0.1:{port} for {', '.join(sorted(tokens))}"
+          + (f"; app page on 127.0.0.1:{app_port}" if app_port else ""))
     stop = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
     stop.wait()
-    server.shutdown()
+    for server in servers:
+        server.shutdown()
     return 0
 
 
@@ -51,11 +61,16 @@ def cmd_config_check(a: argparse.Namespace) -> int:
     config.load_port(paths.config)
     update = config.load_update(paths.config)
     paperless = config.load_paperless(paths.config)
+    config.load_app_port(paths.config)
     if a.strict:
         config.load_token(paths.paperless_token)
     print(f"config ok (clients: {', '.join(sorted(tokens))}; updates {'on' if update else 'off'}; "
-          f"paperless {paperless.url}; links {'on' if paperless.link else 'off'})")
+          f"paperless {paperless.url}; links {_links(paperless)})")
     return 0
+
+
+def _links(cfg: config.PaperlessConfig) -> str:
+    return "app" if cfg.app_links else "web" if cfg.link else "off"
 
 
 def cmd_check(_: argparse.Namespace) -> int:

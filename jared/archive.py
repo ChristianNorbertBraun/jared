@@ -150,8 +150,9 @@ class Labels:
 
 class Archive:
     def __init__(self, client: Client, link: str = "", deadline_field: str = "Kündbar bis", today=dt.date.today,
-                 clock=time.monotonic):
+                 clock=time.monotonic, app_links: bool = False):
         self.client, self.link, self.deadline_field, self.today = client, link, deadline_field, today
+        self.app_links = app_links
         self.labels = Labels(client, clock)
 
     # --- formatting ---------------------------------------------------------------------------------------------
@@ -186,7 +187,10 @@ class Archive:
         return str(value)
 
     def _url(self, doc_id: int) -> str:
-        return f"{self.link}/documents/{doc_id}/details" if self.link else ""
+        """The link for a document: the app page (see jared/apppage.py) with app_links, else the web view."""
+        if not self.link:
+            return ""
+        return f"{self.link}/app/{doc_id}" if self.app_links else f"{self.link}/documents/{doc_id}/details"
 
     def _line(self, d: dict, snippet: bool = False) -> str:
         L = self.labels

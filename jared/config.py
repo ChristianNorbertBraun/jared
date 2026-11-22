@@ -12,11 +12,14 @@ config.toml:
 
     [server]
     port = 8769                      # optional
+    app_port = 8772                  # optional: the page behind app links (see app_links)
 
     [paperless]
     url = "http://127.0.0.1:8000"    # the Paperless-ngx API, on this machine only (http on loopback)
     link = "https://paperless.example.ts.net"  # optional: the address the user opens documents at
     deadline_field = "Kündbar bis"   # optional: the date custom field archiv_fristen lists
+    app_links = true                 # optional: links open the Swift Paperless app through <link>/app/<number>
+                                     # (needs link, and a proxy that sends /app to app_port; see jared/apppage.py)
 
 Credentials, one file each (mode 600): token-<client> (the bearer token of a chat client) and paperless-token
 (the API token of a Paperless account that may only VIEW).
@@ -31,6 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 PORT = 8769
+APP_PORT = 8772
 NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 
@@ -50,6 +54,7 @@ class PaperlessConfig:
     url: str = "http://127.0.0.1:8000"
     link: str = ""
     deadline_field: str = "Kündbar bis"
+    app_links: bool = False
 
 
 @dataclass(frozen=True)
@@ -117,11 +122,24 @@ def load_update(path: Path) -> UpdateConfig | None:
     return UpdateConfig(repo, publisher)
 
 
-def load_port(path: Path) -> int:
-    value = (_table(_load(path), "server") or {}).get("port", PORT)
+def _port(section: dict, key: str, default: int) -> int:
+    value = section.get(key, default)
     if isinstance(value, bool) or not isinstance(value, int) or not 1024 <= value <= 65535:
-        raise ConfigError("[server] port must be a whole number from 1024 to 65535")
+        raise ConfigError(f"[server] {key} must be a whole number from 1024 to 65535")
     return value
+
+
+def load_port(path: Path) -> int:
+    return _port(_table(_load(path), "server") or {}, "port", PORT)
+
+
+def load_app_port(path: Path) -> int:
+    """The port of the page behind app links; never the port of the MCP endpoint."""
+    section = _table(_load(path), "server") or {}
+    port = _port(section, "app_port", APP_PORT)
+    if port == _port(section, "port", PORT):
+        raise ConfigError("[server] app_port must differ from port")
+    return port
 
 
 def load_paperless(path: Path) -> PaperlessConfig:
@@ -130,6 +148,7 @@ def load_paperless(path: Path) -> PaperlessConfig:
     url = section.get("url", PaperlessConfig.url)
     link = section.get("link", "")
     field = section.get("deadline_field", PaperlessConfig.deadline_field)
+    app_links = section.get("app_links", False)
     if not isinstance(url, str):
         raise ConfigError("[paperless] url must be text")
     u = urllib.parse.urlsplit(url)
@@ -139,7 +158,11 @@ def load_paperless(path: Path) -> PaperlessConfig:
         raise ConfigError("[paperless] link must be an address like https://host:port")
     if not isinstance(field, str) or not 0 < len(field) <= 128:
         raise ConfigError("[paperless] deadline_field must be the name of a custom field")
-    return PaperlessConfig(url.rstrip("/"), link.rstrip("/"), field)
+    if not isinstance(app_links, bool):
+        raise ConfigError("[paperless] app_links must be true or false")
+    if app_links and not link:
+        raise ConfigError("[paperless] app_links needs link (the address the app page is served under)")
+    return PaperlessConfig(url.rstrip("/"), link.rstrip("/"), field, app_links)
 
 
 def load_token(path: Path) -> str:

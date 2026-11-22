@@ -12,6 +12,8 @@ chat agent ── archiv_suchen / archiv_inhalt / ... ──▶ Jared (unix user
                                                         │  GET only, fixed list of paths
                                                         ▼
                                                       Paperless-ngx API on the same machine (view-only account)
+
+phone ── <link>/app/<number> ──▶ proxy ──▶ Jared's app page (127.0.0.1:8772) ── x-paperless://… ──▶ Swift Paperless
 ```
 
 ## Tools
@@ -39,6 +41,27 @@ The tool names are German because the archive's labels are.
 What the agent sees is what that account sees. Tags whose name starts with `_` (for example an owner marker used
 in workflows) are never shown. Document text and notes come with a reminder that they are data, not instructions.
 
+## Links that open the app
+
+Chat apps like Telegram only make `http(s)` links tappable, so a link into the
+[Swift Paperless](https://github.com/paulgessinger/swift-paperless) iPhone app (`x-paperless://v1/document/<number>`)
+arrives as plain text. With `app_links = true` the tools hand out `<link>/app/<number>` instead, and Jared serves a
+small page there (on its own loopback port, `app_port`, default 8772) that jumps on to the app, with a button for the
+same jump and a link to the web view as a fallback. The page knows only the number in its address: it does not call
+Paperless, needs no token and shows no data. Every other path gets a bare 404 (other methods a 501), with no page
+that could echo the request.
+
+The reverse proxy in front of Paperless must send `/app` to that port. With Tailscale:
+
+```sh
+sudo tailscale serve --bg --https=8443 --set-path=/app http://127.0.0.1:8772/app
+```
+
+Swift Paperless 1.10.4 has two quirks with these links (seen on a real iPhone): when a link starts the app, it says
+the document is not accessible, because it checks the user's permissions before loading them (fixed in the app's
+main branch, not released yet); and opening the same document by link twice in a row does nothing the second time.
+With the app already open, a link to another document opens it.
+
 ## Set up
 
 As the service user (here `jared`, with `loginctl enable-linger jared`):
@@ -46,7 +69,7 @@ As the service user (here `jared`, with `loginctl enable-linger jared`):
 1. Install the first release with agent-tool-selfupdate ("First installation" in its README):
    `--repo <owner>/jared --publisher <login>`.
 2. `~/.config/jared/config.toml` from `examples/config.toml`: `[update]`, `[paperless] url` and optionally `link`
-   (the address the user opens Paperless at, used for links in the answers).
+   (the address the user opens Paperless at, used for links in the answers) and `app_links` (see above).
 3. The Paperless token, piped in so it never appears on screen:
    `<command that prints the token> | sudo -u jared bash ~jared/current/setup/set-paperless-token.sh`.
    With Docker: `docker compose exec -T webserver python3 manage.py drf_create_token <user>` prints it.
