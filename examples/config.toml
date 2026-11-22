@@ -1,0 +1,10 @@
+# ~/.config/jared/config.toml of the service user. See jared/config.py for every setting.
+
+[update]
+repo = "your-name/jared"
+publisher = "your-github-login"
+
+[paperless]
+url = "http://127.0.0.1:8000"                  # the API on this machine
+link = "https://paperless.example.ts.net"       # optional: where the user opens a document
+#deadline_field = "Kündbar bis"
